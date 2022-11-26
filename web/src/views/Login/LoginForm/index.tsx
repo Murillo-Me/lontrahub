@@ -20,7 +20,7 @@ export function LoginForm() {
             email: '',
             name: '',
             password: '',
-            terms: true,
+            terms: false,
         },
 
         validate: {
