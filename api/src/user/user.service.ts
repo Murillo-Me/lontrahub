@@ -1,56 +1,79 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { CreateUserDto, LoginUserDto, UpdatePasswordDto } from './user.dto';
+import { compare, hash } from 'bcrypt';
 import { PrismaService } from '../prisma.service';
-import { User, Prisma } from '@prisma/client';
+import { User } from '@prisma/client';
+
+interface FormatEmail extends Partial<User> {
+  email: string;
+}
 
 @Injectable()
 export class UserService {
   constructor(private prisma: PrismaService) {}
 
-  async user(
-    userWhereUniqueInput: Prisma.UserWhereUniqueInput,
-  ): Promise<User | null> {
-    return this.prisma.user.findUnique({
-      where: userWhereUniqueInput,
+  //use by user module to change user password
+  async updatePassword(payload: UpdatePasswordDto, id: string): Promise<User> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+    if (!user) {
+      throw new HttpException('invalid_credentials', HttpStatus.UNAUTHORIZED);
+    }
+
+    const areEqual = await compare(payload.old_password, user.password);
+    if (!areEqual) {
+      throw new HttpException('invalid_credentials', HttpStatus.UNAUTHORIZED);
+    }
+    return await this.prisma.user.update({
+      where: { id },
+      data: { password: await hash(payload.new_password, 10) },
     });
   }
 
-  async users(params: {
-    skip?: number;
-    take?: number;
-    cursor?: Prisma.UserWhereUniqueInput;
-    where?: Prisma.UserWhereInput;
-    orderBy?: Prisma.UserOrderByWithRelationInput;
-  }): Promise<User[]> {
-    const { skip, take, cursor, where, orderBy } = params;
-    return this.prisma.user.findMany({
-      skip,
-      take,
-      cursor,
-      where,
-      orderBy,
+  async create(userDto: CreateUserDto): Promise<any> {
+    const userInDb = await this.prisma.user.findFirst({
+      where: { email: userDto.email },
+    });
+    if (userInDb) {
+      throw new HttpException('user_already_exist', HttpStatus.CONFLICT);
+    }
+
+    return await this.prisma.user.create({
+      data: {
+        ...userDto,
+        role: 'USER' as const,
+        password: await hash(userDto.password, 10),
+      },
     });
   }
 
-  async createUser(data: Prisma.UserCreateInput): Promise<User> {
-    return this.prisma.user.create({
-      data,
+  async findByLogin({ email, password }: LoginUserDto): Promise<FormatEmail> {
+    const user = await this.prisma.user.findFirst({
+      where: { email },
     });
-  }
 
-  async updateUser(params: {
-    where: Prisma.UserWhereUniqueInput;
-    data: Prisma.UserUpdateInput;
-  }): Promise<User> {
-    const { where, data } = params;
-    return this.prisma.user.update({
-      data,
-      where,
-    });
-  }
+    if (!user) {
+      throw new HttpException('invalid_credentials', HttpStatus.UNAUTHORIZED);
+    }
 
-  async deleteUser(where: Prisma.UserWhereUniqueInput): Promise<User> {
-    return this.prisma.user.delete({
-      where,
+    // compare passwords
+    const areEqual = await compare(password, user.password);
+
+    if (!areEqual) {
+      throw new HttpException('invalid_credentials', HttpStatus.UNAUTHORIZED);
+    }
+
+    const { password: _, ...rest } = user;
+    return rest;
+  }
+  //use by auth module to get user in database
+  async findByPayload({ email }: any): Promise<any> {
+    const user = await this.prisma.user.findFirst({
+      where: { email },
     });
+
+    const { password: _, ...userData } = user;
+    return userData;
   }
 }
