@@ -1,5 +1,7 @@
 {
     "compilerOptions": {
+        "typeRoots": ["node_modules/@types"],
+        "types": ["node"],
         "baseUrl": "./src",
         "paths": {
             "@/*": ["*"]
@@ -20,6 +22,6 @@
         "noEmit": true,
         "jsx": "react-jsx"
     },
-    "include": ["src"],
+    "include": ["src", "./environment.d.ts"],
     "references": [{ "path": "./tsconfig.node.json" }]
 }
